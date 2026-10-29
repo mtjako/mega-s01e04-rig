@@ -1,0 +1,94 @@
+name: Publish review preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_marker:
+        description: Include the lane marker for the initial review only
+        type: boolean
+        default: false
+        required: true
+
+concurrency:
+  group: review-preview
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+      actions: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: |
+          npm install --global pnpm@12.11.2
+          pnpm install --frozen-lockfile
+      - name: Verify the service
+        run: |
+          pnpm test
+          pnpm typecheck
+      - name: Export the HTML copy outside the checkout
+        env:
+          LANE_MARKER: ${{ inputs.include_marker && secrets.LANE_MARKER || '' }}
+          INCLUDE_MARKER: ${{ inputs.include_marker }}
+          PORT: '8787'
+        run: |
+          if [ "$INCLUDE_MARKER" = true ] && [ -z "$LANE_MARKER" ]; then
+            echo 'The initial review requires the LANE_MARKER repository secret.' >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/rig-preview"
+          node --import tsx src/server.ts > "$RUNNER_TEMP/rig.log" 2>&1 &
+          rig_pid=$!
+          trap 'kill "$rig_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8787/digest/2026-10-28 --output "$RUNNER_TEMP/rig-preview/index.html"; then
+              break
+            fi
+            sleep 1
+          done
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          html = (Path(os.environ['RUNNER_TEMP']) / 'rig-preview/index.html').read_text()
+          assert html.startswith('<!doctype html>')
+          assert html.count('<tr') == 6
+          assert 'invalid lines: 1' in html
+          assert '<script' not in html and 'src=' not in html
+          marker = os.environ.get('LANE_MARKER', '')
+          if marker:
+              assert marker in html
+          else:
+              assert 'no marker set' in html
+          print('Verified self-contained HTML with five jobs and the requested banner state.')
+          PY
+      - uses: actions/configure-pages@v5
+      - name: Upload the temporary Pages artifact
+        id: upload
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ runner.temp }}/rig-preview
+          retention-days: 1
+      - name: Deploy the HTML copy
+        id: deploy
+        uses: actions/deploy-pages@v4
+      - name: Delete the temporary artifact after deployment
+        if: ${{ always() && steps.upload.outputs.artifact_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact_id }}
+        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID"
