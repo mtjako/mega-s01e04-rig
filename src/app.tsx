@@ -3,7 +3,6 @@ import { loadConfig, type RigConfig } from './config.js';
 import { readNight } from './digest/reader.js';
 import { lane } from './lane.js';
 import { readStatus } from './status.js';
-import { readNight } from './digest/reader.js';
 import { Layout } from './views/layout.js';
 import { Digest } from './views/digest.js';
 import { StatusBoard } from './views/status.js';
@@ -15,8 +14,6 @@ export function createApp(config: RigConfig = loadConfig()) {
 
   app.get('/api/digest/:night', (c) => {
     const night = c.req.param('night');
-    if (!isNight(night)) return c.json({ error: 'night not found' }, 404);
-
     const digest = readNight(config.runsDir, night);
     if (!digest) return c.json({ error: 'night not found' }, 404);
     return c.json(digest);
@@ -43,10 +40,4 @@ export function createApp(config: RigConfig = loadConfig()) {
   });
 
   return app;
-}
-
-function isNight(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
 }
