@@ -14,6 +14,12 @@ const css = `
   table { border-collapse: collapse; width: 100%; }
   th, td { text-align: left; padding: .35rem .75rem .35rem 0; border-bottom: 1px solid var(--line); }
   th { color: var(--mute); font-weight: normal; }
+  .digest-table-scroll { max-inline-size: 100%; overflow-x: auto; }
+  .digest-table { inline-size: max-content; min-inline-size: 100%; }
+  .digest-table-scroll:focus-visible { outline: 2px solid oklch(0.43 0.07 75); outline-offset: 2px; }
+  @media (prefers-color-scheme: dark) {
+    .digest-table-scroll:focus-visible { outline-color: oklch(0.78 0.1 75); }
+  }
   .warn { color: var(--warn); }
   .mute { color: var(--mute); }
 `;
@@ -25,6 +31,7 @@ export function Layout(props: { title: string; lane: Lane; children: Child }) {
       <html lang="en">
         <head>
           <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>rig · {props.title}</title>
           <style>{raw(css)}</style>
         </head>
